@@ -1,0 +1,24 @@
+type Shape {
+  id: ID!
+  kind: String!
+  color: String!
+}
+
+type Query {
+  shapes: [Shape!]!
+}
+
+type Mutation {
+  createShape(kind: String!, color: String!): Shape!
+  updateShape(id: ID!, kind: String!, color: String!): Shape!
+  deleteShape(id: ID!): Boolean!
+}
+
+type ShapeChangedPayload {
+  shape: Shape
+  operation: String!
+}
+
+type Subscription {
+  shapeChanged: ShapeChangedPayload!
+}
