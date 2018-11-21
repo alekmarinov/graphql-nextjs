@@ -50,17 +50,45 @@ const DELETE_SHAPE = gql`
   }
 `
 
-const colorChangeMap = {
-  red: 'green',
-  green: 'blue',
-  blue: 'red'
-}
+const SHAPE_KINDS = ['Square', 'Circle', 'Rectangle']
 
-const Shape = ({ id, color, kind, onDelete, onUpdate }) => <div>
-  <font color={color}>{kind}</font>
-  <input type="button" value="Delete" onClick={() => onDelete(id)} />
-  <input type="button" value="Update" onClick={() => onUpdate(id, kind, colorChangeMap[color])} />
-</div>
+const COLORS = [
+  'Green',
+  'Blue',
+  'Orange',
+  'Cyan',
+  'Brown',
+  'Magenta',
+  'Red'
+]
+
+const colorChangeMap = [...COLORS.keys()].reduce((colMap, idx) => Object.assign(colMap, { [COLORS[idx]]: idx < COLORS.length - 1 ? COLORS[idx + 1] : COLORS[0] }), {})
+
+const Shape = ({ id, color, kind }) => <li>
+  <span className='column'><font color={color}>{kind}</font></span>
+  <Mutation mutation={DELETE_SHAPE}>
+    {(deleteShape, { data, error }) => {
+      return <span className='column'><input type="button" value="Delete" onClick={() => deleteShape({ variables: { id } })} /></span>
+    }}
+  </Mutation>
+  <Mutation mutation={UPDATE_SHAPE}>
+    {(updateShape, { data, error }) => {
+      return <span className='column'><input type="button" value="Change color" onClick={() => updateShape({ variables: { id, kind, color: colorChangeMap[color] } })} /></span>
+    }}
+  </Mutation>
+  < style jsx > {`
+    .row {
+      float: left;
+      width: 100%;        
+    }
+
+    .column {
+      float: left;
+      width: 30%;        
+    }
+    `}
+  </style >
+</li>
 
 class ShapeList extends React.Component {
 
@@ -71,9 +99,18 @@ class ShapeList extends React.Component {
   render() {
     const { shapes, ...otherProps } = this.props
 
-    return <div className="row">
+    return <ul className="list">
       {shapes.map(shape => <Shape key={shape.id} {...shape} {...otherProps} />)}
-    </div>
+      <style jsx>{`
+          .list {
+            padding: 0pt 0 20pt 10pt;
+            max-width: 300pt;
+            list-style-type: none;
+            text-align: left;
+          }
+        `}
+      </style>
+    </ul>
   }
 }
 
@@ -82,101 +119,79 @@ const Home = () => (
     <Head title="Home" />
 
     <div>
-      <Mutation mutation={DELETE_SHAPE}>
-        {(deleteShape, { data, error }) => {
-          if (data) {
-            console.log("deleted shape: ", data.deleteShape)
+      <div><div className='list'>
+        <select className='column' id="kind">
+          {SHAPE_KINDS.map((shape, idx) => <option key={idx} value={shape}>{shape}</option>)}
+        </select>
+        <select className='column' id="color">
+          {COLORS.map((color, idx) => <option key={idx} value={color}>{color}</option>)}
+        </select><Mutation mutation={CREATE_SHAPE}>
+          {createShape => {
+            return <input className='column' type="button" value="New Item"
+              onClick={() => {
+                const kind = document.getElementById("kind").value
+                const color = document.getElementById("color").value
+                createShape({ variables: { kind, color } })
+              }}
+            />
+          }}
+        </Mutation>
+      </div>
+        < style jsx > {`
+          .list {
+            padding: 20pt 0 20pt 10pt;
+            max-width: 300pt;
+            list-style-type: none;
+            text-align: left;
           }
-          return <Mutation mutation={UPDATE_SHAPE}>
-            {(updateShape, { data, error }) => {
-              if (data) {
-                console.log("updated shape: ", data.updateShape)
-              }
-
-              return <div><Mutation mutation={CREATE_SHAPE}>
-                {(createShape, { data, error }) => {
-                  if (data) {
-                    console.log("created shape: ", data.createShape)
-                  }
-                  return <div>
-                    <select id="kind">
-                      <option value="Rect">Rect</option>
-                      <option value="Circle">Circle</option>
-                      <option value="Square">Square</option>
-                    </select>
-                    <select id="color">
-                      <option value="red">Red</option>
-                      <option value="green">Green</option>
-                      <option value="blue">Blue</option>
-                    </select>
-                    <input type="button" value="New Item"
-                      onClick={() => {
-                        const kind = document.getElementById("kind").value
-                        const color = document.getElementById("color").value
-                        createShape({ variables: { kind, color } })
-                      }}
-                    />
-                  </div>
-                }}
-              </Mutation>
-                <Query query={SHAPES_QUERY}>
-                  {({ subscribeToMore, ...result }) => {
-                    const { data, loading } = result
-                    console.log("On subscribeToMore: data = ", data, ", loading = ", loading)
-                    if (!loading)
-                      return (
-                        <ShapeList
-                          onUpdate={ (id, kind, color) => {
-                            updateShape({ variables: { id, kind, color } })
-                          }}
-                          onDelete={ id => {
-                            deleteShape({ variables: { id } })
-                          }}
-                          shapes={data.shapes}
-                          subscribeToNewShape={() => {
-                            console.log("Calling subscribeToMore...")
-                            subscribeToMore({
-                              document: SHAPE_CHANGED_SUBSCRIPTION,
-                              updateQuery: (prev, data) => {
-                                console.log("updateQuery: prev = ", prev, ", data = ", data)
-                                if (!data.subscriptionData.data) return prev
-                                const payload = data.subscriptionData.data.shapeChanged
-                                switch (payload.operation) {
-                                  case "create":
-                                    return Object.assign({}, prev, {
-                                      shapes: [...prev.shapes, payload.shape]
-                                    })
-                                  case "update":
-                                    const updatedShapes = []
-                                    prev.shapes.forEach(shape => {
-                                      if (shape.id !== payload.shape.id)
-                                        updatedShapes.push(shape)
-                                      else
-                                        updatedShapes.push(Object.assign(shape, payload.shape))
-                                    })
-                                    return {
-                                      shapes: updatedShapes
-                                    }
-                                  case "delete":
-                                    return Object.assign({}, prev, {
-                                      shapes: prev.shapes.filter(shape => shape.id !== payload.shape.id)
-                                    })
-                                  default: throw Error(`Operation ${payload.operation} is not supported`)
-                                }
-                              }
+    .column {
+      float: left;
+      width: 30%;
+    }
+    `}
+        </style >
+        <Query query={SHAPES_QUERY}>
+          {({ subscribeToMore, ...result }) => {
+            const { data, loading } = result
+            if (!loading)
+              return (
+                <ShapeList
+                  shapes={data.shapes}
+                  subscribeToNewShape={() => {
+                    subscribeToMore({
+                      document: SHAPE_CHANGED_SUBSCRIPTION,
+                      updateQuery: (prev, data) => {
+                        if (!data.subscriptionData.data) return prev
+                        const payload = data.subscriptionData.data.shapeChanged
+                        switch (payload.operation) {
+                          case "create":
+                            return Object.assign({}, prev, {
+                              shapes: [...prev.shapes, payload.shape]
                             })
-                          }}
-                        />
-                      )
-                    else
-                      return "Loading"
+                          case "update":
+                            prev.shapes.forEach(shape => {
+                              if (shape.id === payload.shape.id)
+                                Object.assign(shape, payload.shape)
+                            })
+                            return {
+                              shapes: prev.shapes
+                            }
+                          case "delete":
+                            return Object.assign({}, prev, {
+                              shapes: prev.shapes.filter(shape => shape.id !== payload.shape.id)
+                            })
+                          default: throw Error(`Operation ${payload.operation} is not supported`)
+                        }
+                      }
+                    })
                   }}
-                </Query>
-              </div>
-            }}
-          </Mutation>
-        }}
-      </Mutation>
+                />
+              )
+            else
+              return "Loading"
+          }}
+        </Query>
+      </div>
     </div>
   </div>
 )

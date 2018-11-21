@@ -5,13 +5,39 @@ import { createServer } from 'http'
 import { makeExecutableSchema } from 'graphql-tools';
 import { execute, subscribe } from 'graphql'
 import { SubscriptionServer } from 'subscriptions-transport-ws'
-import { importSchema } from 'graphql-import'
 import { graphqlExpress } from 'graphql-server-express'
 import { PubSub } from 'graphql-subscriptions'
 import ObservableStore from '@alekmarinov/observablestore'
-const typeDefs = importSchema('./server/schema.graphql')
 
-const port = 3000
+const typeDefs = `
+type Shape {
+    id: ID!
+    kind: String!
+    color: String!
+  }
+  
+  type Query {
+    shapes: [Shape!]!
+  }
+  
+  type Mutation {
+    createShape(kind: String!, color: String!): Shape!
+    updateShape(id: ID!, kind: String!, color: String!): Shape!
+    deleteShape(id: ID!): Boolean!
+  }
+  
+  type ShapeChangedPayload {
+    shape: Shape
+    operation: String!
+  }
+  
+  type Subscription {
+    shapeChanged: ShapeChangedPayload!
+  }
+`
+
+const port = process.env.NODE_PORT || 3000
+const host = process.env.NODE_HOST || "0.0.0.0"
 const isDev = process.env.NODE_ENV !== 'production'
 const nextApp = next({ dev: isDev })
 
@@ -19,7 +45,6 @@ const pubsub = new PubSub()
 const DB_CHANGED_TOPIC = 'db_changed'
 const db = ObservableStore()
 db.subscribe(({ prev, item }) => {
-    console.log("db: ", prev, item)
     const payload = {
         shape: item || prev,
     }
@@ -36,7 +61,7 @@ const resolvers = {
     Query: {
         shapes() {
             console.log("Query shapes: ", db.items)
-            return db.items
+            return db.items.filter(item => item)
         }
     },
     Mutation: {
@@ -62,10 +87,7 @@ const resolvers = {
     Subscription: {
         shapeChanged: {
             subscribe: () => pubsub.asyncIterator(DB_CHANGED_TOPIC),
-            resolve: (payload) => {
-                console.log("resolve: ", payload)
-                return payload
-            }
+            resolve: (payload) => payload
         }
     }
 }
@@ -92,7 +114,7 @@ expressApp.get('*', nextApp.getRequestHandler())
 const httpServer = createServer(expressApp)
 
 nextApp.prepare().then(() => {
-    httpServer.listen(port, () => {
+    httpServer.listen(port, host, () => {
         new SubscriptionServer(
             {
                 execute,
@@ -105,5 +127,5 @@ nextApp.prepare().then(() => {
             }
         )
     })
-    console.log(`Server is running on http://localhost:${port}`)
+    console.log(`Server is running on http://${host}:${port}`)
 })
