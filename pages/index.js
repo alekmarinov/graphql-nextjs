@@ -178,7 +178,7 @@ const Home = () => (
                             }
                           case "delete":
                             return Object.assign({}, prev, {
-                              shapes: prev.shapes.filter(shape => shape.id !== payload.shape.id)
+                              shapes: payload.shape ? prev.shapes.filter(shape => shape.id !== payload.shape.id) : prev.shapes
                             })
                           default: throw Error(`Operation ${payload.operation} is not supported`)
                         }

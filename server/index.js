@@ -45,8 +45,11 @@ const pubsub = new PubSub()
 const DB_CHANGED_TOPIC = 'db_changed'
 const db = ObservableStore()
 db.subscribe(({ prev, item }) => {
+    let shape = item || prev
+    if (shape)
+        shape.id = shape._index
     const payload = {
-        shape: item || prev,
+        shape
     }
     if (!item)
         payload.operation = "delete"
@@ -60,27 +63,26 @@ db.subscribe(({ prev, item }) => {
 const resolvers = {
     Query: {
         shapes() {
-            console.log("Query shapes: ", db.items)
-            return db.items.filter(item => item)
+            const items = db.items().map(item => Object.assign({ id: item._index }, item))
+            console.log("Query shapes: ", items)
+            return items
         }
     },
     Mutation: {
         async createShape(root, { kind, color }, context) {
             console.log("createShape: ", kind, color)
-            const shape = { kind, color, id: db.items.length }
-            db.createItem(shape)
-            return shape
+            const item = db.createItem({ kind, color })
+            return Object.assign({ id: item._index }, item)
         },
 
         async updateShape(root, { id, kind, color }, context) {
-            console.log("updateShape: ", kind, color)
-            db.updateItem({ id, kind, color })
-            return db.items[id]
+            console.log("updateShape: ", id, kind, color)
+            return Object.assign({ id }, db.updateItem(parseInt(id), { kind, color }))
         },
 
         async deleteShape(root, { id }, context) {
             console.log("deleteShape: ", id)
-            db.deleteItem(id)
+            db.deleteItem(parseInt(id))
             return true
         }
     },
